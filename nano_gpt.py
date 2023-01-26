@@ -11,7 +11,7 @@ def main():
     # Hyperparameters
     batch_size = 64
     block_size = 256
-    max_iters = 5000
+    max_iters = 0
     eval_interval = 500
     learning_rate = 3e-4
     dropout = 0.2
@@ -82,7 +82,7 @@ def main():
     context = torch.zeros((1, 1), dtype=torch.long, device=device)
     print(decode(model.generate(context, 300)[0].tolist()))
 
-    print("\nNow we generate text forever.")
+    print("\nNow we generate text forever.\n")
     model.generate_forever(decode, 0.1)
 
 
@@ -115,7 +115,9 @@ def estimate_loss(
     for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            contexts, targets = get_batch(split, block_size, batch_size, train_data, validation_data)
+            contexts, targets = get_batch(
+                split, block_size, batch_size, train_data, validation_data
+            )
             _, loss = model(contexts, targets)
             losses[k] = loss.item()
         out[split] = losses.mean()
@@ -293,7 +295,7 @@ class BigramLanguageModel(torch.nn.Module):
         message = ""
         context = torch.zeros((1, 1), dtype=torch.long, device=device)
         while True:
-            context = self.generate(context[:, -self.block_size:], 1)
+            context = self.generate(context[:, -self.block_size :], 1)
             next_symbol = decoder([context[0][-1].tolist()])
             if next_symbol == "\n":
                 message = ""
@@ -302,10 +304,10 @@ class BigramLanguageModel(torch.nn.Module):
                 width = shutil.get_terminal_size()[0]
                 if len(message) == width:
                     message = next_symbol
-                    print(f"\n{message}", end="\r")
+                    print("")
                 else:
                     message += next_symbol
-                    print(f"{message}", end="\r")
+                print(f"{message}", end="\r")
             time.sleep(sleep_time)
 
 
