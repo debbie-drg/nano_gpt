@@ -55,27 +55,16 @@ def main():
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-    for iter in range(max_iters):
-
-        # We evaluate loss on train and val once in a while
-        if iter % eval_interval == 0 or iter == max_iters - 1:
-            losses = estimate_loss(
-                model, eval_iters, block_size, batch_size, train_data, validation_data
-            )
-            print(
-                f"At step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}."
-            )
-
-        # Get a batch of data
-        contexts, targets = get_batch(
-            "train", block_size, batch_size, train_data, validation_data
-        )
-
-        # Optimize
-        _, loss = model(contexts, targets)
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+    # Train
+    model.train_model(
+        max_iters,
+        train_data,
+        validation_data,
+        optimizer,
+        batch_size,
+        eval_interval,
+        eval_iters,
+    )
 
     # Generate from the model
     print("\nAn example of text generated from the model.")
@@ -294,21 +283,75 @@ class BigramLanguageModel(torch.nn.Module):
     def generate_forever(self, decoder: Callable[[list[int]], str], sleep_time: float):
         message = ""
         context = torch.zeros((1, 1), dtype=torch.long, device=device)
-        while True:
-            context = self.generate(context[:, -self.block_size :], 1)
-            next_symbol = decoder([context[0][-1].tolist()])
-            if next_symbol == "\n":
-                message = ""
-                print("\n")
-            else:
-                width = shutil.get_terminal_size()[0]
-                if len(message) == width:
-                    message = next_symbol
+        try:
+            while True:
+                context = self.generate(context[:, -self.block_size :], 1)
+                next_symbol = decoder([context[0][-1].tolist()])
+                if next_symbol == "\n":
+                    message = ""
                     print("")
                 else:
-                    message += next_symbol
-                print(f"{message}", end="\r")
-            time.sleep(sleep_time)
+                    width = shutil.get_terminal_size()[0]
+                    if len(message) == width:
+                        message = next_symbol
+                        print("")
+                    else:
+                        message += next_symbol
+                    print(f"{message}", end="\r")
+                time.sleep(sleep_time)
+        except KeyboardInterrupt:
+            return
+
+    def train_model(
+        self,
+        number_iterations: int,
+        train_data: torch.Tensor,
+        validation_data: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
+        batch_size: int,
+        eval_interval: int,
+        eval_iters: int,
+    ):
+        last_val_loss = float("inf")
+        iter = 0
+        try:
+            while True:
+
+                # We evaluate loss on train and val once in a while
+                if iter % eval_interval == 0 or iter == number_iterations - 1:
+                    losses = estimate_loss(
+                        self,
+                        eval_iters,
+                        self.block_size,
+                        batch_size,
+                        train_data,
+                        validation_data,
+                    )
+                    print(
+                        f"At step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}."
+                    )
+                    if losses["val"] >= last_val_loss:
+                        print("Early stop.")
+                        return
+                    last_val_loss = losses["val"]
+
+                # Get a batch of data
+                contexts, targets = get_batch(
+                    "train", self.block_size, batch_size, train_data, validation_data
+                )
+
+                # Optimize
+                _, loss = self(contexts, targets)
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                optimizer.step()
+
+                iter += 1
+                if iter == number_iterations:
+                    return
+
+        except KeyboardInterrupt:  # Allows for keyboard interruption without exiting the script.
+            print("Training manually interrupted.")
 
 
 if __name__ == "__main__":
